@@ -1,7 +1,9 @@
-use napi::{bindgen_prelude::*, Error as NapiError, Result};
+use napi::{Error as NapiError, Result};
 use napi_derive::napi;
 use winmix::WinMix;
 use serde::Serialize;
+use std::path::Path;
+use windows_icons::{get_icon_base64_by_path, get_icon_base64_by_process_id};
 
 // Helper function to convert errors into NapiError
 fn convert_error<E: std::fmt::Display>(err: E) -> NapiError {
@@ -14,7 +16,17 @@ struct AudioSession {
     path: String,
     volume: f32,
     muted: bool,
+    app_name: String,
+    app_icon: String,
 }
+
+fn get_app_icon(path: &str, pid: u32) -> String {
+    // Try both path-based and PID-based icon extraction
+    get_icon_base64_by_path(path)
+        .or_else(|_| get_icon_base64_by_process_id(pid))
+        .unwrap_or_default()
+}
+
 
 #[napi]
 pub fn list_audio_sessions() -> Result<String> {
@@ -25,12 +37,24 @@ pub fn list_audio_sessions() -> Result<String> {
         for session in winmix.enumerate().map_err(convert_error)? {
             let volume = session.vol.get_master_volume().map_err(convert_error)?;
             let muted = session.vol.get_mute().map_err(convert_error)?;
-
+            let path = session.path.clone();
+        
+            let app_name = Path::new(&path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(|name| name.split('.').next().unwrap_or("").to_string())
+                .unwrap_or_default();
+        
+            // Pass both path and PID to get_app_icon
+            let app_icon = get_app_icon(&path, session.pid);
+        
             sessions.push(AudioSession {
                 pid: session.pid,
-                path: session.path,
+                path,
                 volume,
                 muted,
+                app_name,
+                app_icon,
             });
         }
 
