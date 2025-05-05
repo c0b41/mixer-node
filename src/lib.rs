@@ -91,23 +91,39 @@ pub fn mute_master_volume(mute: bool) -> Result<String> {
 }
 
 #[napi]
-pub fn set_app_volume(app_name: String, volume: u8) -> Result<String> {
+pub fn set_app_volume(pid: u32, volume: u8) -> Result<String> {
     unsafe {
         let winmix = WinMix::default();
         let normalized = volume as f32 / 100.0;
+
         if let Some(session) = winmix
             .enumerate()
             .map_err(convert_error)?
             .into_iter()
-            .find(|s| s.path.to_lowercase().contains(&app_name.to_lowercase()))
+            .find(|s| s.pid == pid)
         {
             session.vol.set_master_volume(normalized).map_err(convert_error)?;
             Ok(format!(
-                "Volume for '{}' set to {}% (normalized: {:.2})",
-                app_name, volume, normalized
+                "Volume for PID {} set to {}% (normalized: {:.2})",
+                pid, volume, normalized
             ))
         } else {
-            Ok(format!("Could not find an application named '{}'", app_name))
+            Ok(format!("Could not find an application with PID {}", pid))
+        }
+    }
+}
+
+#[napi]
+pub fn set_app_mute(pid: u32, mute: bool) -> Result<String> {
+    unsafe {
+        let winmix = WinMix::default();
+        let sessions = winmix.enumerate().map_err(convert_error)?;
+
+        if let Some(session) = sessions.into_iter().find(|s| s.pid == pid) {
+            session.vol.set_mute(mute).map_err(convert_error)?;
+            Ok(format!("Process {} muted: {}", pid, mute))
+        } else {
+            Ok(format!("Could not find an application with PID {}", pid))
         }
     }
 }
